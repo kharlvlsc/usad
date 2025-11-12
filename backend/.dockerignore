@@ -1,10 +1,7 @@
 __pycache__
 *.pyc
-*.pyo
-.env
 .git
-.venv
-venv
-node_modules
-build
-dist
+.gitignore
+.env
+*.csv
+before_preprocess_reviews.csv

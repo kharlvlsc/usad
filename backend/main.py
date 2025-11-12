@@ -1,22 +1,20 @@
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 import json
-
-# Import functions from review_prediction.py
 from .review_prediction import predict_review
 
 app = FastAPI()
 
-# Enable CORS for your frontend
+# Enable CORS
 origins = [
     "http://127.0.0.1:5500",
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://your-app-name.koyeb.app",  # Add your Koyeb domain
-    "https://*.koyeb.app",
+    "https://your-app-name.koyeb.app",
 ]
 
 app.add_middleware(
@@ -27,11 +25,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Model for request body
+# Serve frontend static files
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+
 class ReviewRequest(BaseModel):
     review: str
 
-# Define the output model
 class ReviewResponse(BaseModel):
     prediction: str
     cluster: int
@@ -40,23 +39,45 @@ class ReviewResponse(BaseModel):
     features: dict
     processed_text: str
 
-# API endpoint
 @app.post("/api/predict", response_model=ReviewResponse)
 def predict(review_request: ReviewRequest):
     review_text = review_request.review
     result = predict_review(review_text)
     return result
 
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("../frontend/index.html")
 
 @app.get("/api/feature-basis")
 def get_feature_basis():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(base_dir, 'feature_basis.json')
-    if os.path.exists(path):
-        with open(path, 'r') as f:
+    try:
+        with open("feature_basis.json") as f:
             return json.load(f)
-    # Fallback: empty basis
-    return {"normal": {}}
+    except:
+        return {"normal": {}}
 
+FROM python:3.11-slim
 
-    ### python -m uvicorn backend.main:app --reload
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy backend
+COPY backend/ /app/backend/
+COPY frontend/ /app/frontend/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+RUN python -m textblob.download_corpora
+
+WORKDIR /app/backend
+
+# Expose port
+EXPOSE 8000
+
+# Run FastAPI with Uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
